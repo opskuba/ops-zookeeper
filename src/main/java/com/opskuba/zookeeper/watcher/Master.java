@@ -1,4 +1,4 @@
-package com.opskuba.zookeeper.sample;
+package com.opskuba.zookeeper.watcher;
 
 import java.io.IOException;
 import java.util.Random;
@@ -78,7 +78,7 @@ public class Master implements Watcher {
 						default:
 							isLeader = false;
 						}
-						System.out.println("I'm " + (isLeader ? "" : "not ") + "the leader");
+					logger.info("I'm " + (isLeader ? "" : "not ") + "the leader.");
 					}
 				}, null);
 	}
@@ -119,12 +119,6 @@ public class Master implements Watcher {
 
 		master.startZooKeeper();
 		master.runForMaster();
-
-//		if (master.isLeader) {
-//			System.out.println("I'm the Leader.");
-//		} else {
-//			System.out.println("I'm not the Leader.");
-//		}
 
 		Thread.sleep(60000);
 
