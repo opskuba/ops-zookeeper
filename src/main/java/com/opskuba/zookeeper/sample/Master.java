@@ -3,10 +3,9 @@ package com.opskuba.zookeeper.sample;
 import java.io.IOException;
 import java.util.Random;
 
+import org.apache.zookeeper.AsyncCallback;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.KeeperException.NoNodeException;
-import org.apache.zookeeper.KeeperException.NodeExistsException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs;
@@ -64,21 +63,24 @@ public class Master implements Watcher {
 	 * @throws KeeperException
 	 * @throws InterruptedException
 	 */
-	void runForMaster() throws KeeperException, InterruptedException {
-		while (true) {
-			try {
-				zk.create("/master", serverId.getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
-				isLeader = true;
-				break;
-			} catch (NodeExistsException e) {
-				isLeader = false;
-				break;
-			} catch (KeeperException.ConnectionLossException e) {
-
-			}
-			if (checkMaster())
-				break;
-		}
+	void runForMaster() {
+		zk.create("/master", serverId.getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL,
+				new AsyncCallback.StringCallback() {
+					@Override
+					public void processResult(int rc, String path, Object ctx, String name) {
+						switch (KeeperException.Code.get(rc)) {
+						case CONNECTIONLOSS:
+							checkMaster();
+							return;
+						case OK: // 创建节点成功，成功获取领导权
+							isLeader = true;
+							break;
+						default:
+							isLeader = false;
+						}
+						System.out.println("I'm " + (isLeader ? "" : "not ") + "the leader");
+					}
+				}, null);
 	}
 
 	/**
@@ -86,20 +88,24 @@ public class Master implements Watcher {
 	 * 
 	 * @return 存在返回true，反之false
 	 */
-	boolean checkMaster() throws InterruptedException {
-		while (true) {
-			try {
-				Stat stat = new Stat();
-				byte data[] = zk.getData("/master", false, stat);
-				isLeader = new String(data).equals(serverId);
-				return true;
-			} catch (NoNodeException e) {
-				// 没有master节点，可返回false
-				return false;
-			} catch (KeeperException e) {
-				e.printStackTrace();
+	private void checkMaster() {
+		zk.getData("/master", false, new AsyncCallback.DataCallback() {
+			@Override
+			public void processResult(int rc, String path, Object ctx, byte[] data, Stat stat) {
+				switch (KeeperException.Code.get(rc)) {
+				case CONNECTIONLOSS:
+					checkMaster();
+					return;
+				case NONODE: // 没有master节点存在，则尝试获取领导权
+					runForMaster();
+					return;
+				case NODEEXISTS:
+					System.out.println("node exists.");
+				default:
+					break;
+				}
 			}
-		}
+		}, null);
 	}
 
 	@Override
@@ -109,16 +115,16 @@ public class Master implements Watcher {
 
 	public static void main(String[] args) throws Exception {
 
-		Master master = new Master("10.10.101.46:2181,10.10.102.46:2181,10.10.103.46:2181");
+		Master master = new Master("zookeeper.opskuba.com:2181");
 
 		master.startZooKeeper();
 		master.runForMaster();
 
-		if (master.isLeader) {
-			System.out.println("I'm the Leader.");
-		} else {
-			System.out.println("I'm not the Leader.");
-		}
+//		if (master.isLeader) {
+//			System.out.println("I'm the Leader.");
+//		} else {
+//			System.out.println("I'm not the Leader.");
+//		}
 
 		Thread.sleep(60000);
 
